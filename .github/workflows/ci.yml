@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Tests
+        run: python -m pytest -q
+      - name: Version
+        run: rbacpath --version
+      - name: Risky export gates on errors
+        run: |
+          set +e
+          rbacpath audit examples/export-risky.json
+          status=$?
+          set -e
+          echo "exit=$status"
+          test "$status" -eq 2
+      - name: Clean export passes
+        run: rbacpath audit examples/export-clean.json
+      - name: Escalation paths are found
+        run: |
+          rbacpath paths examples/export-risky.json | tee paths.txt
+          grep -q PATH001 paths.txt
+          grep -q PATH003 paths.txt
+      - name: Unreadable export exits 3
+        run: |
+          set +e
+          rbacpath audit does-not-exist.json
+          status=$?
+          set -e
+          test "$status" -eq 3
